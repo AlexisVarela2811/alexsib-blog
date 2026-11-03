@@ -1,0 +1,27 @@
+# Local visual prototypes and agent state
+/design/
+/odd/
+/.atl/
+
+# Dependencies and build output
+/node_modules/
+/.next/
+/out/
+/coverage/
+/playwright-report/
+/test-results/
+*.tsbuildinfo
+
+# Secrets and local databases
+.env*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+/.vercel/
+
+# Operating system files
+.DS_Store
