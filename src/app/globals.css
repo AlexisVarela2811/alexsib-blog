@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  background: #0b100d;
+  color: #edf4ef;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a:focus-visible {
+  outline: 2px solid #a1efb5;
+  outline-offset: 4px;
+}
+
+a:hover {
+  color: #a1efb5;
+}
