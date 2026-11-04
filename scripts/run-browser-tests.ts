@@ -16,7 +16,7 @@ const portOpen = () => new Promise<boolean>(resolve => {
   socket.once('error', () => resolve(false));
 });
 const occupiedBefore = await portOpen();
-const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test'], {
+const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)], {
   stdio: 'inherit',
   env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(root, '.playwright'), BROWSER_FIXTURE_DIR: fixture, BROWSER_OUTPUT_DIR: output },
 });
