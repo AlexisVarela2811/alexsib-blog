@@ -1,0 +1,3 @@
+import Link from 'next/link';
+export const metadata = { title: 'Sobre mí' };
+export default function About() { return <main id="contenido" className="reading"><p className="eyebrow">~/alexsib/sobre-mi.md</p><h1>No hace falta saberlo todo para compartir lo que aprendés.</h1><p className="lead">Hola, soy Alexsib. Este blog es mi forma de aprender en público.</p><h2>Escribir para entender</h2><p>Me interesan la programación y la inteligencia artificial. Escribir ayuda a descubrir qué entendí y qué necesito seguir investigando.</p><h2>Un lugar para empezar</h2><p>Las explicaciones son para cualquiera que tenga curiosidad. No hace falta leer en orden: elegí una pregunta y empezá por ahí.</p><Link href="/#articulos">Encontrar algo para leer →</Link></main>; }
