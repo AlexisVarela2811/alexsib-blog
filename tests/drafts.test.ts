@@ -38,6 +38,31 @@ test('draft lifecycle preserves creation metadata and public filtering', async (
   } finally { client.close(); }
 });
 
+test('legacy HTTPS covers can only be retained on drafts', async () => {
+  const client = createClient({ url: ':memory:' });
+  try {
+    await client.execute(readFileSync('drizzle/0000_initial.sql', 'utf8'));
+    await client.executeMultiple(readFileSync('drizzle/0002_media.sql', 'utf8'));
+    const db = drizzle(client);
+    const legacy = 'https://example.com/cover.png';
+    const managed = '/media/12345678-1234-1234-1234-123456789abc';
+    const draft = await createDraft(db, input);
+    await db.update(posts).set({ coverImage: legacy }).where(eq(posts.id, draft.id));
+    const edited = await editDraft(db, draft.id, { ...input, title: 'Edited', coverImage: legacy });
+    assert.equal(edited.coverImage, legacy);
+    assert.equal(edited.title, 'Edited');
+    const before = await listDrafts(db);
+    await assert.rejects(() => createDraft(db, { ...input, slug: 'new', coverImage: legacy }));
+    await assert.rejects(() => editDraft(db, draft.id, { ...input, coverImage: 'https://example.com/new.png' }));
+    await assert.rejects(() => publishDraft(db, draft.id));
+    assert.deepEqual(await listDrafts(db), before);
+    assert.equal((await editDraft(db, draft.id, { ...input, coverImage: managed })).coverImage, managed);
+    await assert.rejects(() => editDraft(db, draft.id, { ...input, coverImage: legacy }));
+    assert.equal((await editDraft(db, draft.id, input)).coverImage, null);
+    assert.equal((await publishDraft(db, draft.id)).status, 'published');
+  } finally { client.close(); }
+});
+
 test('invalid inputs and slug conflicts never change stored data', async () => {
   const client = createClient({ url: ':memory:' });
   try {

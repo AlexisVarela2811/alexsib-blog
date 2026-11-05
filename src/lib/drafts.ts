@@ -11,7 +11,7 @@ import { extractMediaReferences } from './media/references.ts';
 type Database = LibSQLDatabase;
 type DraftInput = { slug: string; title: string; excerpt: string; content: string; tags: string[]; coverImage: string | null };
 
-function validate(input: unknown): DraftInput {
+function validate(input: unknown, allowLegacyCover = false): DraftInput {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid draft');
   const value = input as Record<string, unknown>;
   const keys = ['slug', 'title', 'excerpt', 'content', 'tags', 'coverImage'];
@@ -30,7 +30,12 @@ function validate(input: unknown): DraftInput {
   const coverImage = value.coverImage;
   if (coverImage !== null) {
     if (typeof coverImage !== 'string' || coverImage.length > 2048) throw new Error('Invalid coverImage');
-    if (!/^\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(coverImage)) throw new Error('Invalid coverImage');
+    if (!/^\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(coverImage)) {
+      try { if (!allowLegacyCover || new URL(coverImage).protocol !== 'https:') throw new Error(); }
+      catch { throw new Error('Invalid coverImage'); }
+      extractMediaReferences(content);
+      return { slug, title, excerpt, content, tags: value.tags, coverImage };
+    }
   }
   extractMediaReferences(content, coverImage);
   return { slug, title, excerpt, content, tags: value.tags, coverImage };
@@ -53,9 +58,10 @@ export async function createDraft(db: Database, input: unknown) {
 
 export async function editDraft(db: Database, id: unknown, input: unknown) {
   validateId(id);
-  const data = validate(input);
-  const [updated] = await db.update(posts).set({ ...data, updatedAt: new Date().toISOString() }).where(and(eq(posts.id, id), eq(posts.status, 'draft'))).returning();
-  if (!updated) throw new Error('Draft not found');
+  const data = validate(input, true);
+  const legacyCover = data.coverImage !== null && !data.coverImage.startsWith('/media/');
+  const [updated] = await db.update(posts).set({ ...data, updatedAt: new Date().toISOString() }).where(and(eq(posts.id, id), eq(posts.status, 'draft'), legacyCover ? eq(posts.coverImage, data.coverImage!) : undefined)).returning();
+  if (!updated) throw new Error(legacyCover ? 'Invalid coverImage' : 'Draft not found');
   return updated;
 }
 
