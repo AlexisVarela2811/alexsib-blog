@@ -15,6 +15,7 @@ test('draft lifecycle preserves creation metadata and public filtering', async (
   const client = createClient({ url: ':memory:' });
   try {
     await client.execute(readFileSync('drizzle/0000_initial.sql', 'utf8'));
+    await client.executeMultiple(readFileSync('drizzle/0002_media.sql', 'utf8'));
     const db = drizzle(client);
     const created = await createDraft(db, input);
     assert.equal(created.status, 'draft');
@@ -41,11 +42,12 @@ test('invalid inputs and slug conflicts never change stored data', async () => {
   const client = createClient({ url: ':memory:' });
   try {
     await client.execute(readFileSync('drizzle/0000_initial.sql', 'utf8'));
+    await client.executeMultiple(readFileSync('drizzle/0002_media.sql', 'utf8'));
     const db = drizzle(client);
     const first = await createDraft(db, input);
     const second = await createDraft(db, { ...input, slug: 'other' });
     const before = await db.select().from(posts);
-    for (const invalid of [null, {}, { ...input, slug: '../bad' }, { ...input, title: '' }, { ...input, excerpt: '' }, { ...input, content: '' }, { ...input, tags: [5] }, { ...input, coverImage: 'javascript:alert(1)' }, { ...input, status: 'published' }]) {
+    for (const invalid of [null, {}, { ...input, slug: '../bad' }, { ...input, title: '' }, { ...input, excerpt: '' }, { ...input, content: '' }, { ...input, tags: [5] }, { ...input, coverImage: 'javascript:alert(1)' }, { ...input, content: '![external](https://example.com/image.png)' }, { ...input, status: 'published' }]) {
       await assert.rejects(() => createDraft(db, invalid));
       await assert.rejects(() => editDraft(db, first.id, invalid));
     }

@@ -1,4 +1,4 @@
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const posts = sqliteTable('posts', {
   id: text('id').primaryKey(),
@@ -13,4 +13,13 @@ export const posts = sqliteTable('posts', {
   updatedAt: text('updated_at').notNull(),
   publishedAt: text('published_at'),
 });
+export const media = sqliteTable('media', {
+  id: text('id').primaryKey(),
+  postId: text('post_id').notNull().references(() => posts.id),
+  storagePath: text('storage_path').notNull().unique(),
+});
+export const publishedMedia = sqliteTable('published_media', {
+  postId: text('post_id').notNull().references(() => posts.id),
+  mediaId: text('media_id').notNull().references(() => media.id),
+}, table => [primaryKey({ columns: [table.postId, table.mediaId] })]);
 export type Article = typeof posts.$inferSelect;

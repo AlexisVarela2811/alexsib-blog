@@ -1,10 +1,12 @@
 // Server-side persistence only. This module does not authenticate or authorize:
 // every caller must enforce authorization before reading or mutating drafts.
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
 // @ts-expect-error Node's native TypeScript runner requires the extension.
-import { posts } from '../db/schema.ts';
+import { media, posts, publishedMedia } from '../db/schema.ts';
+// @ts-expect-error Node's native TypeScript runner requires the extension.
+import { extractMediaReferences } from './media/references.ts';
 
 type Database = LibSQLDatabase;
 type DraftInput = { slug: string; title: string; excerpt: string; content: string; tags: string[]; coverImage: string | null };
@@ -28,9 +30,9 @@ function validate(input: unknown): DraftInput {
   const coverImage = value.coverImage;
   if (coverImage !== null) {
     if (typeof coverImage !== 'string' || coverImage.length > 2048) throw new Error('Invalid coverImage');
-    try { if (new URL(coverImage).protocol !== 'https:') throw new Error(); }
-    catch { throw new Error('Invalid coverImage'); }
+    if (!/^\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(coverImage)) throw new Error('Invalid coverImage');
   }
+  extractMediaReferences(content, coverImage);
   return { slug, title, excerpt, content, tags: value.tags, coverImage };
 }
 
@@ -59,15 +61,29 @@ export async function editDraft(db: Database, id: unknown, input: unknown) {
 
 export async function publishDraft(db: Database, id: unknown) {
   validateId(id);
-  const now = new Date().toISOString();
-  const [updated] = await db.update(posts).set({ status: 'published', publishedAt: now, updatedAt: now }).where(and(eq(posts.id, id), eq(posts.status, 'draft'))).returning();
-  if (!updated) throw new Error('Draft not found');
-  return updated;
+  return db.transaction(async tx => {
+    const [draft] = await tx.select().from(posts).where(and(eq(posts.id, id), eq(posts.status, 'draft')));
+    if (!draft) throw new Error('Draft not found');
+    const references = extractMediaReferences(draft.content, draft.coverImage);
+    if (references.length) {
+      const owned = await tx.select({ id: media.id }).from(media).where(and(eq(media.postId, id), inArray(media.id, references)));
+      if (owned.length !== references.length) throw new Error('Media not owned by draft');
+    }
+    await tx.delete(publishedMedia).where(eq(publishedMedia.postId, id));
+    if (references.length) await tx.insert(publishedMedia).values(references.map(mediaId => ({ postId: id, mediaId })));
+    const now = new Date().toISOString();
+    const [updated] = await tx.update(posts).set({ status: 'published', publishedAt: now, updatedAt: now }).where(and(eq(posts.id, id), eq(posts.status, 'draft'))).returning();
+    if (!updated) throw new Error('Draft not found');
+    return updated;
+  });
 }
 
 export async function unpublishDraft(db: Database, id: unknown) {
   validateId(id);
-  const [updated] = await db.update(posts).set({ status: 'draft', publishedAt: null, updatedAt: new Date().toISOString() }).where(and(eq(posts.id, id), eq(posts.status, 'published'))).returning();
-  if (!updated) throw new Error('Published article not found');
-  return updated;
+  return db.transaction(async tx => {
+    const [updated] = await tx.update(posts).set({ status: 'draft', publishedAt: null, updatedAt: new Date().toISOString() }).where(and(eq(posts.id, id), eq(posts.status, 'published'))).returning();
+    if (!updated) throw new Error('Published article not found');
+    await tx.delete(publishedMedia).where(eq(publishedMedia.postId, id));
+    return updated;
+  });
 }
