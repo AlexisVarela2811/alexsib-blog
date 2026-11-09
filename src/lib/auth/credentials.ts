@@ -16,11 +16,10 @@ function decode(value: string, bytes: number): Buffer | null {
   return decoded.length === bytes && decoded.toString('base64') === value ? decoded : null;
 }
 
-/** Server-side verification only; this does not implement login or rate limiting. */
-export async function verifyAdminCredentials(username: unknown, password: unknown): Promise<boolean> {
-  if (typeof window !== 'undefined') return false;
-  const configuredUser = process.env.ADMIN_USERNAME;
-  const encoded = process.env.ADMIN_PASSWORD_HASH;
+/** Server-side verification with explicit configuration; no login or rate limiting. */
+export async function verifyAdminCredentialsWithConfig(config: unknown, username: unknown, password: unknown): Promise<boolean> {
+  if (typeof window !== 'undefined' || !config || typeof config !== 'object') return false;
+  const { username: configuredUser, passwordHash: encoded } = config as { username?: unknown; passwordHash?: unknown };
   if (!boundedString(configuredUser, 128) || !boundedString(username, 128) ||
       !boundedString(password, 1024) || !boundedString(encoded, 128)) return false;
   const parts = encoded.split('$');
@@ -41,4 +40,10 @@ export async function verifyAdminCredentials(username: unknown, password: unknow
   } catch {
     return false;
   }
+}
+
+/** Legacy environment-backed interface. */
+export async function verifyAdminCredentials(username: unknown, password: unknown): Promise<boolean> {
+  if (typeof window !== 'undefined') return false;
+  return verifyAdminCredentialsWithConfig({ username: process.env.ADMIN_USERNAME, passwordHash: process.env.ADMIN_PASSWORD_HASH }, username, password);
 }

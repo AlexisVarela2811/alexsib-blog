@@ -2,13 +2,23 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scryptSync } from 'node:crypto';
 // @ts-expect-error Node's native TypeScript runner requires the extension.
-import { verifyAdminCredentials } from '../src/lib/auth/credentials.ts';
+import { verifyAdminCredentials, verifyAdminCredentialsWithConfig } from '../src/lib/auth/credentials.ts';
 
 // Synthetic test vector only; never use these credentials in production.
 const password = 'synthetic password';
 const salt = Buffer.from('000102030405060708090a0b0c0d0e0f', 'hex');
 const hash = scryptSync(password, salt, 32, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
 const encoded = `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
+
+test('explicit credential configuration is isolated and fails closed', async () => {
+  const config = { username: 'admin', passwordHash: encoded };
+  assert.equal(await verifyAdminCredentialsWithConfig(config, 'admin', password), true);
+  assert.equal(await verifyAdminCredentialsWithConfig(config, 'other', password), false);
+  assert.equal(await verifyAdminCredentialsWithConfig(config, 'admin', 'wrong'), false);
+  for (const bad of [undefined, null, {}, { username: 'admin', passwordHash: 'bad' }, { username: '', passwordHash: encoded }]) {
+    assert.equal(await verifyAdminCredentialsWithConfig(bad, 'admin', password), false);
+  }
+});
 
 test('accepts only the configured username and password', async () => {
   process.env.ADMIN_USERNAME = 'admin';

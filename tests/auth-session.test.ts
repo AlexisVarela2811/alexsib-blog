@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SignJWT, decodeJwt } from 'jose';
 // @ts-expect-error Node's native TypeScript runner requires the extension.
-import { createAdminSession, verifyAdminSession } from '../src/lib/auth/session.ts';
+import { createAdminSession, verifyAdminSession, createAdminSessionWithConfig, verifyAdminSessionWithConfig } from '../src/lib/auth/session.ts';
 
 // Deterministic public test vectors only; never use these as real secrets.
 const key = Buffer.from(Array.from({ length: 32 }, (_, i) => i)).toString('base64');
@@ -11,6 +11,16 @@ const rotated = Buffer.from(Array.from({ length: 32 }, (_, i) => 255 - i)).toStr
 async function signed(claims: Record<string, unknown>, alg = 'HS256') {
   return new SignJWT(claims).setProtectedHeader({ alg }).sign(Buffer.from(key, 'base64'));
 }
+
+test('explicit session configuration issues and verifies tokens, fails closed and rotates', async () => {
+  const token = await createAdminSessionWithConfig({ secret: key });
+  assert.equal(await verifyAdminSessionWithConfig({ secret: key }, token), true);
+  assert.equal(await verifyAdminSessionWithConfig({ secret: rotated }, token), false);
+  for (const config of [undefined, null, {}, { secret: 'bad' }]) {
+    await assert.rejects(createAdminSessionWithConfig(config), /Invalid session secret/);
+    assert.equal(await verifyAdminSessionWithConfig(config, token), false);
+  }
+});
 
 test('issues a bounded admin token and rejects expiry at its boundary', async () => {
   process.env.SESSION_SECRET = key;
