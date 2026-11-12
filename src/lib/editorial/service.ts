@@ -12,7 +12,7 @@ type Persistence = {
   list: () => Promise<Article[]>;
   read: (id: string) => Promise<Article | undefined>;
   create: (input: unknown) => Promise<Article>;
-  edit: (id: string, input: unknown) => Promise<Article>;
+  edit: (id: string, input: unknown, expectedCover?: { value: string | null }) => Promise<Article>;
   publish: (id: string) => Promise<Article>;
   unpublish: (id: string) => Promise<Article>;
 };
@@ -31,7 +31,7 @@ export function createEditorialPersistence(db: LibSQLDatabase): Persistence {
     list: () => db.select().from(posts).orderBy(desc(posts.updatedAt)),
     read: async id => (await db.select().from(posts).where(eq(posts.id, id)).limit(1))[0],
     create: input => createDraft(db, input),
-    edit: (id, input) => editDraft(db, id, input),
+    edit: (id, input, expectedCover) => editDraft(db, id, input, expectedCover),
     publish: id => publishDraft(db, id),
     unpublish: id => unpublishDraft(db, id),
   };
@@ -48,7 +48,7 @@ export function createEditorialService(deps: Dependencies) {
     list: () => run(() => deps.authorizeRead(), () => deps.persistence.list()),
     read: (id: string) => run(() => deps.authorizeRead(), () => deps.persistence.read(id)),
     create: (input: unknown) => run(() => deps.authorizeMutation(), () => deps.persistence.create(input)),
-    edit: (id: string, input: unknown) => run(() => deps.authorizeMutation(), () => deps.persistence.edit(id, input)),
+    edit: (id: string, input: unknown, expectedCover?: { value: string | null }) => run(() => deps.authorizeMutation(), () => expectedCover === undefined ? deps.persistence.edit(id, input) : deps.persistence.edit(id, input, expectedCover)),
     publish: (id: string) => run(() => deps.authorizeMutation(), () => deps.persistence.publish(id)),
     unpublish: (id: string) => run(() => deps.authorizeMutation(), () => deps.persistence.unpublish(id)),
   };

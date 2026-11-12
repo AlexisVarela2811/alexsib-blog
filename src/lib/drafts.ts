@@ -1,7 +1,7 @@
 // Server-side persistence only. This module does not authenticate or authorize:
 // every caller must enforce authorization before reading or mutating drafts.
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
 // @ts-expect-error Node's native TypeScript runner requires the extension.
 import { media, posts, publishedMedia } from '../db/schema.ts';
@@ -56,11 +56,13 @@ export async function createDraft(db: Database, input: unknown) {
   return created;
 }
 
-export async function editDraft(db: Database, id: unknown, input: unknown) {
+export async function editDraft(db: Database, id: unknown, input: unknown, expectedCover?: { value: string | null }) {
   validateId(id);
   const data = validate(input, true);
   const legacyCover = data.coverImage !== null && !data.coverImage.startsWith('/media/');
-  const [updated] = await db.update(posts).set({ ...data, updatedAt: new Date().toISOString() }).where(and(eq(posts.id, id), eq(posts.status, 'draft'), legacyCover ? eq(posts.coverImage, data.coverImage!) : undefined)).returning();
+  if (expectedCover !== undefined && (expectedCover === null || (expectedCover.value !== null && typeof expectedCover.value !== 'string'))) throw new Error('Invalid expected cover');
+  const coverCondition = expectedCover === undefined ? undefined : expectedCover.value === null ? isNull(posts.coverImage) : eq(posts.coverImage, expectedCover.value);
+  const [updated] = await db.update(posts).set({ ...data, updatedAt: new Date().toISOString() }).where(and(eq(posts.id, id), eq(posts.status, 'draft'), legacyCover ? eq(posts.coverImage, data.coverImage!) : undefined, coverCondition)).returning();
   if (!updated) throw new Error(legacyCover ? 'Invalid coverImage' : 'Draft not found');
   return updated;
 }
