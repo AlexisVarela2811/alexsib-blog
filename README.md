@@ -21,7 +21,13 @@ To bootstrap an explicitly selected, empty Turso database, first verify the targ
 
 Optionally, after migrating an explicit local file database, run `npm run db:seed` to add a published beginner-friendly example about context windows. This is never run automatically, rejects missing or nonlocal database URLs, and leaves an existing post with the example slug unchanged on repeated runs or conflicts. It does not enable login or private endpoints.
 
-Published articles are read from SQLite; drafts are not public. Articles use the shared Markdown renderer, which omits raw HTML. An empty fenced code block marked `context-window` embeds the interactive context-window illustration. The private editorial panel and image uploads are not connected yet; only the login endpoint described below is reachable.
+Published articles are read from SQLite; drafts are not public. Articles use the shared Markdown renderer, which omits raw HTML. An empty fenced code block marked `context-window` embeds the interactive context-window illustration.
+
+## Private panel
+
+With the authentication values from the next section and `BLOB_READ_WRITE_TOKEN` for private image storage, a signed-in admin can list drafts and published articles, edit and preview one draft, upload images (JPEG, PNG or WebP up to 5 MiB), publish and unpublish. Every one of those routes is a guarded server-side handler: pages redirect to `/login` without a valid `__Host-admin` session, and mutations additionally require the exact configured `Origin`, answer one generic rejection with `Cache-Control: no-store`, and never return internal detail. Draft images are served only to that session; publishing makes an article and its images readable by anyone through `/media/<id>`, and unpublishing takes both back.
+
+Known limits, by design for this MVP: an edit overwrites the draft in place, with no revision history; an image that a shared cache already stored may stay readable for up to 60 seconds after unpublishing; a draft carrying a legacy `https://` cover image cannot be published until that cover is replaced, because publishing only accepts blog-managed images; a double submit shows the generic rejection instead of returning to the panel; and there is no background worker that retries an upload whose provider outcome was ambiguous, so such an intent stays recorded for manual reconciliation. Nothing here proves real provider behaviour: Vercel Blob uploads, Turso across multiple clients, session revocation freshness and a full browser run remain unverified by this project.
 
 ## Private login
 
