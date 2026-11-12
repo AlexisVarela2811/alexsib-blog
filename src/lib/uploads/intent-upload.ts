@@ -60,9 +60,8 @@ export async function uploadWithIntent(input: {
       if (!matches(created, identity, 'prepared')) throw new IntentUploadError('create', identity);
       let stored: unknown;
       try { stored = await deps.put(storagePath, bytes, options); } catch (cause) { throw new IntentUploadError('put', identity, cause); }
-      // An answer that proves no object exists must never register media: the
-      // invariant keeps the durable intent for reconciliation instead.
-      if (stored === null || stored === undefined) throw new IntentUploadError('put', identity);
+      // Only an explicit null proves no object; a void adapter may have stored the bytes.
+      if (stored === null) throw new IntentUploadError('put', identity);
       let uploaded: Intent;
       try { uploaded = await deps.transition(operationId, 'prepared', 'uploaded'); } catch (cause) { throw new IntentUploadError('transition', identity, cause); }
       if (!matches(uploaded, identity, 'uploaded')) throw new IntentUploadError('transition', identity);

@@ -338,3 +338,12 @@ test('S2: exactly the upload limit is accepted and one byte over never reaches t
   assert.ok(typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id));
   assert.equal(putCalls[0].body.byteLength, limit);
 });
+
+test('S2: an adapter that stores the bytes and resolves with nothing still registers', async () => {
+  resetProvider();
+  const voidPut = async (pathname: string, body: Buffer, options: Parameters<typeof fakePut>[2]) => {
+    putCalls.push({ pathname, body, options });
+  };
+  const id = await uploadDraftImage(cookie, origin, 'up-target', 'image/png', streamOf(png), voidPut);
+  assert.ok(typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id));
+});
