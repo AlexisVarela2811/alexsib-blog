@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createDatabase } from '../../db/client';
@@ -54,7 +55,7 @@ export default async function AdminPage() {
                   <h2>{draft.title}</h2>
                   {draft.tags.length > 0 ? <span className="meta">{draft.tags.join(' · ')}</span> : null}
                 </div>
-                <span className="badge">Borrador</span>
+                <Link className="badge" href={`/admin/${encodeURIComponent(draft.id)}`}>Editar</Link>
               </div>
             ))}
       </section>

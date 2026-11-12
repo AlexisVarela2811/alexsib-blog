@@ -41,7 +41,7 @@ async function stop(child: ChildProcess): Promise<void> {
   await exited;
 }
 
-async function withServer(run: (base: string) => Promise<void>) {
+async function withServer(run: (base: string, databaseUrl: string) => Promise<void>) {
   assert.ok(isolated, 'Run only in a self-contained isolated copy with AUTH_HTTP_ISOLATED=1');
   const dir = await mkdtemp(join(tmpdir(), 'blog-admin-http-'));
   let child: ChildProcess | undefined;
@@ -71,7 +71,7 @@ async function withServer(run: (base: string) => Promise<void>) {
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     assert.ok(ready, 'Isolated Next server did not become ready');
-    await run(base);
+    await run(base, databaseUrl);
   } finally {
     if (child) await stop(child);
     await rm(dir, { recursive: true, force: true });
@@ -122,6 +122,61 @@ test('admin requires the session cookie and shows the private drafts list', { sk
     const home = await fetch(base);
     assert.equal(home.status, 200);
     assert.doesNotMatch(await home.text(), new RegExp(draftTitle));
+  });
+});
+
+test('guarded editor, preview and save handler stay private over HTTP', { skip }, async () => {
+  await withServer(async (base, databaseUrl) => {
+    const editorPath = `/admin/fixture-draft`;
+    const anonymous = await fetch(`${base}${editorPath}`, { redirect: 'manual' });
+    assert.equal(anonymous.status, 307);
+    assert.equal(anonymous.headers.get('location'), '/login');
+    const anonymousPreview = await fetch(`${base}${editorPath}/vista`, { redirect: 'manual' });
+    assert.equal(anonymousPreview.status, 307);
+    assert.equal(anonymousPreview.headers.get('location'), '/login');
+
+    const cookie = await sessionCookie(base);
+    const editor = await fetch(`${base}${editorPath}`, { headers: { cookie } });
+    assert.equal(editor.status, 200);
+    const editorHtml = await editor.text();
+    assert.match(editorHtml, new RegExp(draftTitle));
+    assert.match(editorHtml, /\/api\/admin\/drafts\/fixture-draft/);
+
+    const preview = await fetch(`${base}${editorPath}/vista`, { headers: { cookie } });
+    assert.equal(preview.status, 200);
+    const previewHtml = await preview.text();
+    assert.match(previewHtml, /Solo visible en el panel\./);
+    assert.doesNotMatch(previewHtml, /# Borrador/);
+
+    const values = { title: 'Titulo guardado', slug: draftSlug, excerpt: 'Resumen guardado.', tags: 'Pruebas, Panel', markdown: '## Cambiado\n\nTexto nuevo.' };
+    const save = (headers: Record<string, string>) => fetch(`${base}/api/admin/drafts/fixture-draft`, {
+      method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(values),
+    });
+    for (const headers of [{ origin }, { cookie: '__Host-admin=forged', origin }, { cookie }] as Record<string, string>[]) {
+      const rejected = await save(headers);
+      assert.equal(rejected.status, 400);
+      assert.equal(rejected.headers.get('cache-control'), 'no-store');
+      assert.equal(await rejected.text(), 'No se pudieron guardar los cambios');
+    }
+
+    const db = createClient({ url: databaseUrl });
+    try {
+      const before = await db.execute({ sql: 'SELECT title, tags, content FROM posts WHERE id = ?', args: ['fixture-draft'] });
+      assert.equal(before.rows[0].title as string, draftTitle);
+    } finally { db.close(); }
+
+    const accepted = await save({ cookie, origin });
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.headers.get('cache-control'), 'no-store');
+    assert.equal(await accepted.text(), '');
+
+    const check = createClient({ url: databaseUrl });
+    try {
+      const after = await check.execute({ sql: 'SELECT title, tags, content, status FROM posts WHERE id = ?', args: ['fixture-draft'] });
+      assert.equal(after.rows[0].title as string, 'Titulo guardado');
+      assert.equal(after.rows[0].tags as string, JSON.stringify(['Pruebas', 'Panel']));
+      assert.equal(after.rows[0].status as string, 'draft');
+    } finally { check.close(); }
   });
 });
 
