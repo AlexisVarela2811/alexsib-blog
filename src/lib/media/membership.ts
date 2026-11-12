@@ -6,14 +6,23 @@ import { media, posts, publishedMedia } from '../../db/schema.ts';
 
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+export function validateMedia(postId: string, id: string, storagePath: string) {
+  if (typeof id !== 'string' || !idPattern.test(id) || typeof postId !== 'string' || !postId || typeof storagePath !== 'string' || !storagePath || storagePath.length > 2048) throw new Error('Invalid media');
+}
+
+type Transaction = Parameters<Parameters<LibSQLDatabase['transaction']>[0]>[0];
+
+export async function registerMediaInTransaction(tx: Transaction, postId: string, id: string, storagePath: string) {
+  validateMedia(postId, id, storagePath);
+  const [draft] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, postId), eq(posts.status, 'draft')));
+  if (!draft) throw new Error('Draft not found');
+  const [created] = await tx.insert(media).values({ id, postId, storagePath }).returning();
+  return created;
+}
+
 export async function registerMedia(db: LibSQLDatabase, postId: string, id: string, storagePath: string) {
-  if (!idPattern.test(id) || typeof postId !== 'string' || !postId || typeof storagePath !== 'string' || !storagePath || storagePath.length > 2048) throw new Error('Invalid media');
-  return db.transaction(async tx => {
-    const [draft] = await tx.select({ id: posts.id }).from(posts).where(and(eq(posts.id, postId), eq(posts.status, 'draft')));
-    if (!draft) throw new Error('Draft not found');
-    const [created] = await tx.insert(media).values({ id, postId, storagePath }).returning();
-    return created;
-  });
+  validateMedia(postId, id, storagePath);
+  return db.transaction(tx => registerMediaInTransaction(tx, postId, id, storagePath));
 }
 
 export async function findPublicMedia(db: LibSQLDatabase, id: string) {
