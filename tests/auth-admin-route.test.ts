@@ -49,8 +49,11 @@ async function withServer(run: (base: string, databaseUrl: string) => Promise<vo
     const databaseUrl = pathToFileURL(join(dir, 'fixture.sqlite')).href;
     const db = createClient({ url: databaseUrl });
     try {
-      await db.executeMultiple(await readFile('drizzle/0000_initial.sql', 'utf8'));
-      await db.executeMultiple(await readFile('drizzle/0001_auth_throttle.sql', 'utf8'));
+      // Publishing writes the published-media membership in the same transaction,
+      // so the fixture needs every table the editorial lifecycle touches.
+      for (const file of ['0000_initial.sql', '0001_auth_throttle.sql', '0002_media.sql', '0003_upload_intent.sql', '0004_upload_reservations.sql']) {
+        await db.executeMultiple(await readFile(`drizzle/${file}`, 'utf8'));
+      }
       const now = new Date().toISOString();
       await db.execute({
         sql: `INSERT INTO posts (id, slug, title, excerpt, content, tags, cover_image, status, created_at, updated_at, published_at)
@@ -199,5 +202,48 @@ test('logout requires the exact origin and clears the protected cookie', { skip 
       assert.equal(response.headers.get('location'), null);
       assert.equal(await response.text(), 'Login failed');
     }
+  });
+});
+
+test('publish and unpublish stay guarded and move the article state over HTTP', { skip }, async () => {
+  await withServer(async (base, databaseUrl) => {
+    const cookie = await sessionCookie(base);
+    const act = (action: string, headers: Record<string, string>) => fetch(`${base}/api/admin/drafts/fixture-draft/${action}`, { method: 'POST', redirect: 'manual', headers });
+
+    const panel = await fetch(`${base}/admin`, { headers: { cookie } });
+    assert.equal(panel.status, 200);
+    const panelHtml = await panel.text();
+    assert.match(panelHtml, /action="\/api\/admin\/drafts\/fixture-draft\/publish"/);
+    assert.match(panelHtml, /Publicar/);
+
+    for (const headers of [{ cookie }, { origin }] as Record<string, string>[]) {
+      const rejected = await act('publish', headers);
+      assert.equal(rejected.status, 400);
+      assert.equal(rejected.headers.get('cache-control'), 'no-store');
+      assert.equal(await rejected.text(), 'No se pudo publicar el artículo');
+    }
+    const unchanged = createClient({ url: databaseUrl });
+    try {
+      const row = await unchanged.execute({ sql: 'SELECT status FROM posts WHERE id = ?', args: ['fixture-draft'] });
+      assert.equal(row.rows[0].status as string, 'draft');
+    } finally { unchanged.close(); }
+
+    const published = await act('publish', { cookie, origin });
+    assert.equal(published.status, 303);
+    assert.equal(published.headers.get('location'), '/admin');
+    const afterPublish = await fetch(`${base}/admin`, { headers: { cookie } });
+    const publishedHtml = await afterPublish.text();
+    assert.match(publishedHtml, /action="\/api\/admin\/drafts\/fixture-draft\/unpublish"/);
+    assert.match(publishedHtml, /Despublicar/);
+    assert.match(publishedHtml, new RegExp(draftTitle));
+
+    const anonymousArticles = await fetch(`${base}/articulo/${draftSlug}`);
+    assert.equal(anonymousArticles.status, 200, 'a published article must be readable publicly');
+
+    const reverted = await act('unpublish', { cookie, origin });
+    assert.equal(reverted.status, 303);
+    assert.equal(reverted.headers.get('location'), '/admin');
+    const gone = await fetch(`${base}/articulo/${draftSlug}`);
+    assert.equal(gone.status, 404, 'unpublishing must take the article private again');
   });
 });

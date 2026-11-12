@@ -18,6 +18,9 @@ export type EditorValues = { title: string; slug: string; excerpt: string; tags:
 export type EditorOutcome = { unauthorized: true } | { unauthorized: false; values: EditorValues | null };
 export type PreviewDraft = { title: string; excerpt: string; tags: string[]; content: string };
 export type PreviewOutcome = { unauthorized: true } | { unauthorized: false; draft: PreviewDraft | null };
+/** Minimal row shape for the panel; nothing else about the storage reaches the browser. */
+export type PanelArticle = { id: string; title: string; tags: string[] };
+export type PanelOutcome = { unauthorized: true } | { unauthorized: false; drafts: PanelArticle[] | null; published: PanelArticle[] | null };
 
 function authConfig() {
   return {
@@ -97,6 +100,60 @@ export async function authorizeMutation(cookie: unknown, origin: unknown): Promi
       return await auth.authorize(cookie, origin) === true;
     } finally { client.close(); }
   } catch { return false; }
+}
+
+/** Publish one draft through the authorized service. The persistence layer
+ * writes the published-media membership inside the same transaction, so a
+ * draft referencing an image it does not own fails atomically and stays a
+ * draft. Generic outcome only. */
+export async function publishPrivateDraft(cookie: unknown, origin: unknown, id: unknown): Promise<boolean> {
+  if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin || !validId(id)) return false;
+  try {
+    const session = openSession(cookie, origin);
+    try {
+      await session.service.publish(id);
+      return true;
+    } finally { session.client.close(); }
+  } catch { return false; }
+}
+
+/** Revert one published article to a draft through the authorized service; the
+ * persistence layer removes the published-media membership in the same
+ * transaction, so its images become private again atomically. Generic outcome only. */
+export async function unpublishPrivateDraft(cookie: unknown, origin: unknown, id: unknown): Promise<boolean> {
+  if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin || !validId(id)) return false;
+  try {
+    const session = openSession(cookie, origin);
+    try {
+      await session.service.unpublish(id);
+      return true;
+    } finally { session.client.close(); }
+  } catch { return false; }
+}
+
+/** List the panel's drafts and published articles through the authorized
+ * service, one read of every article partitioned by status. Authorized readers
+ * whose storage fails get the generic not-loaded outcome; anonymous readers
+ * learn nothing about whether the panel or storage exists. */
+export async function loadPanelArticles(cookie: unknown): Promise<PanelOutcome> {
+  if (typeof cookie !== 'string' || !cookie) return { unauthorized: true };
+  try {
+    const session = openSession(cookie, undefined);
+    try {
+      try { if (await session.auth.authorizeRead(cookie) !== true) return { unauthorized: true }; }
+      catch { return { unauthorized: true }; }
+      const articles = await session.service.list();
+      const map = (article: { id: string; title: string; tags: string[] | null; status: string }): PanelArticle =>
+        ({ id: article.id, title: article.title, tags: article.tags ?? [] });
+      return {
+        unauthorized: false,
+        drafts: articles.filter(article => article.status === 'draft').map(map),
+        published: articles.filter(article => article.status === 'published').map(map),
+      };
+    } catch {
+      return { unauthorized: false, drafts: null, published: null };
+    } finally { session.client.close(); }
+  } catch { return { unauthorized: true }; }
 }
 
 /** Save one draft edit with the controller's cover-image comparison; generic outcome only. */

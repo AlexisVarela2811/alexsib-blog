@@ -2,37 +2,17 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createDatabase } from '../../db/client';
-import { createAuthComposition } from '../../lib/auth/composition';
-import { listDrafts } from '../../lib/drafts';
+// @ts-expect-error Node's native TypeScript runner requires the extension.
+import { loadPanelArticles } from './editorial-session.ts';
 
 export const metadata: Metadata = { title: 'Panel privado', robots: { index: false, follow: false } };
 export const dynamic = 'force-dynamic';
 
-type Draft = { id: string; title: string; tags: string[] };
-
-function authConfig() {
-  return {
-    origin: process.env.AUTH_ORIGIN,
-    username: process.env.AUTH_USERNAME,
-    passwordHash: process.env.AUTH_PASSWORD_HASH,
-    sessionSecret: process.env.AUTH_SESSION_SECRET,
-  };
-}
-
 export default async function AdminPage() {
   const cookie = (await headers()).get('cookie') ?? '';
-  let authorized = false;
-  let drafts: Draft[] | null = null;
-  try {
-    const { db, client } = createDatabase();
-    try {
-      authorized = await createAuthComposition(authConfig(), client).authorizeRead(cookie) === true;
-      if (authorized) drafts = await listDrafts(db);
-    } finally { client.close(); }
-  } catch { authorized = false; }
+  const panel = await loadPanelArticles(cookie);
   // Unauthorized readers must not learn whether the panel or the database exists.
-  if (!authorized) redirect('/login');
+  if (panel.unauthorized) redirect('/login');
 
   return (
     <main id="contenido">
@@ -46,19 +26,47 @@ export default async function AdminPage() {
           <button type="submit">Salir</button>
         </form>
       </div>
-      <section aria-label="Borradores">
-        {drafts === null ? <p>No se pudieron cargar los borradores. Probá de nuevo en unos minutos.</p>
-          : drafts.length === 0 ? <p>Todavía no hay borradores.</p>
-            : drafts.map(draft => (
-              <div className="row" key={draft.id}>
-                <div>
-                  <h2>{draft.title}</h2>
-                  {draft.tags.length > 0 ? <span className="meta">{draft.tags.join(' · ')}</span> : null}
+      {panel.drafts === null || panel.published === null ? <p>No se pudieron cargar los artículos. Probá de nuevo en unos minutos.</p> : (
+        <>
+          <section aria-label="Borradores">
+            {panel.drafts.length === 0 ? <p>Todavía no hay borradores.</p>
+              : panel.drafts.map(draft => (
+                <div className="row" key={draft.id}>
+                  <div>
+                    <h2>{draft.title}</h2>
+                    {draft.tags.length > 0 ? <span className="meta">{draft.tags.join(' · ')}</span> : null}
+                  </div>
+                  <div>
+                    {/* Publish works from a plain form: the route guards the
+                        session and the exact origin and answers 303 back here. */}
+                    <form action={`/api/admin/drafts/${encodeURIComponent(draft.id)}/publish`} method="post">
+                      <button type="submit">Publicar</button>
+                    </form>
+                    {/* Drafts are only edited while unpublished, so the edit
+                        link exists only in this list. */}
+                    <Link className="badge" href={`/admin/${encodeURIComponent(draft.id)}`}>Editar</Link>
+                  </div>
                 </div>
-                <Link className="badge" href={`/admin/${encodeURIComponent(draft.id)}`}>Editar</Link>
-              </div>
-            ))}
-      </section>
+              ))}
+          </section>
+          <section aria-label="Publicados">
+            {panel.published.length === 0 ? <p>Nada publicado todavía.</p>
+              : panel.published.map(article => (
+                <div className="row" key={article.id}>
+                  <div>
+                    <h2>{article.title}</h2>
+                    {article.tags.length > 0 ? <span className="meta">{article.tags.join(' · ')}</span> : null}
+                  </div>
+                  <div>
+                    <form action={`/api/admin/drafts/${encodeURIComponent(article.id)}/unpublish`} method="post">
+                      <button type="submit">Despublicar</button>
+                    </form>
+                  </div>
+                </div>
+              ))}
+          </section>
+        </>
+      )}
     </main>
   );
 }
