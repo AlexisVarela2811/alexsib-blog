@@ -85,6 +85,20 @@ export async function loadPreviewDraft(cookie: unknown, id: unknown): Promise<Pr
   } catch { return { unauthorized: true }; }
 }
 
+/** Authorize one private mutation: the `__Host-admin` session cookie AND the exact
+ * configured Origin, through the existing auth composition. The save route calls
+ * this before reading any body byte, so an unauthorized request never buffers a body. */
+export async function authorizeMutation(cookie: unknown, origin: unknown): Promise<boolean> {
+  if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin) return false;
+  try {
+    const { client } = createDatabase();
+    try {
+      const auth = createAuthComposition(authConfig(), client);
+      return await auth.authorize(cookie, origin) === true;
+    } finally { client.close(); }
+  } catch { return false; }
+}
+
 /** Save one draft edit with the controller's cover-image comparison; generic outcome only. */
 export async function savePrivateDraft(cookie: unknown, origin: unknown, id: unknown, values: unknown): Promise<boolean> {
   if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin || !validId(id)) return false;

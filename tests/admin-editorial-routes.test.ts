@@ -67,8 +67,9 @@ function row(id: { args: string[] } | null, draftId: string) {
   });
 }
 
-function saveRequest({ id = 'fixture-draft', requestOrigin = origin as string | null, requestCookie = cookie as string | null, body = JSON.stringify(edited) } = {}) {
+function saveRequest({ id = 'fixture-draft', requestOrigin = origin as string | null, requestCookie = cookie as string | null, body = JSON.stringify(edited), contentType = 'application/json' } = {}) {
   const headers = new Headers();
+  if (contentType !== null) headers.set('content-type', contentType);
   if (requestOrigin !== null) headers.set('origin', requestOrigin);
   if (requestCookie !== null) headers.set('cookie', requestCookie);
   return new Request(`https://blog.example.test/api/admin/drafts/${id}`, { method: 'POST', headers, body });
