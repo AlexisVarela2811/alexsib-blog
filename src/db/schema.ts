@@ -22,4 +22,11 @@ export const publishedMedia = sqliteTable('published_media', {
   postId: text('post_id').notNull().references(() => posts.id),
   mediaId: text('media_id').notNull().references(() => media.id),
 }, table => [primaryKey({ columns: [table.postId, table.mediaId] })]);
+export const uploadIntents = sqliteTable('upload_intents', {
+  operationId: text('operation_id').primaryKey(),
+  mediaId: text('media_id').notNull().unique(),
+  postId: text('post_id').notNull().references(() => posts.id),
+  storagePath: text('storage_path').notNull().unique(),
+  state: text('state', { enum: ['prepared', 'uploaded', 'registered'] }).notNull(),
+});
 export type Article = typeof posts.$inferSelect;
