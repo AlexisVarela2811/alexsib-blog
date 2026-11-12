@@ -13,11 +13,28 @@ npm run db:migrate
 npm run dev
 ```
 
-Open http://localhost:3000. Git ignores `local.sqlite`. The initial migration accepts only explicit `file:` URLs; it does not migrate remote or production databases. Do not use an existing database for this step. Without `TURSO_DATABASE_URL`, queries report a configuration error; no remote database is selected automatically. `SITE_URL` must be the real public origin for sitemap and robots generation.
+Open http://localhost:3000. Git ignores `local.sqlite`. By default, the migration accepts only explicit `file:` URLs; remote bootstrap requires the separate opt-in described below. Do not use an existing database for this step. Without `TURSO_DATABASE_URL`, queries report a configuration error; no remote database is selected automatically. `SITE_URL` must be the real public origin for sitemap and robots generation.
 
-For Turso at runtime, configure `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the server environment. Never commit credentials. Vercel requires both variables and `SITE_URL`, plus a database provisioned and migrated through a separately authorized procedure. No resources have been provisioned or deployed.
+For Turso at runtime, configure `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in the server environment. Never commit credentials. Vercel requires both variables and `SITE_URL`.
 
-Published articles are read from SQLite; drafts are not public. Articles use the shared Markdown renderer, which omits raw HTML. An empty fenced code block marked `context-window` embeds the interactive context-window illustration. The editor is not yet connected to a private publishing workflow; authentication and image uploads are not implemented.
+To bootstrap an explicitly selected, empty Turso database, first verify the target and prepare a recovery plan. Set the remote `libsql://` URL and token in your shell, then run `npm run db:migrate -- --remote`. The remote mode rejects nonempty databases, URL options and embedded credentials; it does not seed content. If the connection fails during commit, the outcome may be unknown: inspect the target before deciding what to do, and do not blindly retry. Remote provider behavior has not yet been verified by this project.
+
+Optionally, after migrating an explicit local file database, run `npm run db:seed` to add a published beginner-friendly example about context windows. This is never run automatically, rejects missing or nonlocal database URLs, and leaves an existing post with the example slug unchanged on repeated runs or conflicts. It does not enable login or private endpoints.
+
+Published articles are read from SQLite; drafts are not public. Articles use the shared Markdown renderer, which omits raw HTML. An empty fenced code block marked `context-window` embeds the interactive context-window illustration. The private editorial panel and image uploads are not connected yet; only the login endpoint described below is reachable.
+
+## Private login
+
+`POST /api/auth/login` accepts a urlencoded `username` and `password`, requires an `Origin` header equal to `AUTH_ORIGIN`, and answers with the generic body `Login failed` (400, `Cache-Control: no-store`, no cookie) for every rejection. On success it returns 303 to `/admin` and sets `__Host-admin`, an HS256 JWT valid for 8 hours, `Secure; HttpOnly; SameSite=Strict`. Configuration comes only from the server environment:
+
+| Variable | Value |
+| --- | --- |
+| `AUTH_ORIGIN` | Exact public HTTPS origin, with no path, query or credentials |
+| `AUTH_USERNAME` | Admin user, at most 128 UTF-8 bytes |
+| `AUTH_PASSWORD_HASH` | `scrypt$<salt>$<key>`: canonical padded base64 of a random 16-byte salt and a 32-byte key derived with `scrypt N=32768, r=8, p=1, maxmem=64 MiB` |
+| `AUTH_SESSION_SECRET` | Canonical padded base64 of 32 cryptographically random bytes |
+
+Generate both secrets with a cryptographically secure source; length and format checks cannot prove entropy. Never commit them. Rotating the password requires rotating `AUTH_SESSION_SECRET`, which invalidates every existing session; there is no revocation list, so a copied token stays valid until it expires or the key rotates. Login requires the `login_throttle` table from the ordinary migration; a missing table, an unreachable database or any malformed value rejects every attempt. `/admin` and the private editing, preview and upload routes remain disabled while the remaining security work is unproven.
 
 ## Checks
 
@@ -29,6 +46,14 @@ npm run build
 ```
 
 The tests create isolated temporary databases and start a local server. The last reported audit found 20 moderate vulnerabilities in development dependencies (ESLint/minimatch and Drizzle Kit/esbuild); `npm audit --omit=dev` reported no production vulnerabilities. This is not a general security guarantee. Do not expose development tools to the public network; esbuild install scripts remain unapproved.
+
+The end-to-end login and panel checks spawn real Next servers, so they are skipped by default. Copy the project to an isolated directory with its own `node_modules`, place that copy on a normal filesystem rather than `/tmp`, and opt in explicitly:
+
+```sh
+AUTH_HTTP_ISOLATED=1 node --experimental-strip-types --test --test-concurrency=1 tests/auth-login-route.test.ts tests/auth-admin-route.test.ts
+```
+
+Turbopack cannot start its node process pool from a tmpfs copy, where `/login` fails with a 500 before any assertion runs, and Next allows only one development server per project directory, so those files must not run concurrently. The copy must contain no private files.
 
 ## Browser checks
 
