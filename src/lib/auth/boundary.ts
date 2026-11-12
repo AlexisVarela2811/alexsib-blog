@@ -12,12 +12,19 @@ type Dependencies = {
 
 const cookieName = '__Host-admin';
 const tokenPattern = /^[A-Za-z0-9._-]{1,4096}$/;
+const clearingCookie = `${cookieName}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Strict`;
 
 function validOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
     return url.protocol === 'https:' && url.origin === origin && !url.username && !url.password;
   } catch { return false; }
+}
+
+/** Origin-checked clearing cookie. Logout needs no credentials or storage. */
+export function logoutCookie(configuredOrigin: string, requestOrigin: unknown): string | null {
+  if (typeof configuredOrigin !== 'string' || !validOrigin(configuredOrigin)) return null;
+  return requestOrigin === configuredOrigin ? clearingCookie : null;
 }
 
 function bounded(value: unknown, max: number): value is string {
@@ -48,8 +55,7 @@ export function createAuthBoundary(deps: Dependencies) {
       } catch { return null; }
     },
     logout(origin: unknown): string | null {
-      if (!configured || origin !== deps.origin) return null;
-      return `${cookieName}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Strict`;
+      return logoutCookie(deps.origin, origin);
     },
     async authorize(cookie: unknown, origin: unknown): Promise<boolean> {
       return origin === deps.origin && await authorizeRead(cookie);
