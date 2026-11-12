@@ -35,6 +35,9 @@ export default async function AdminPage() {
                   <div>
                     <h2>{draft.title}</h2>
                     {draft.tags.length > 0 ? <span className="meta">{draft.tags.join(' · ')}</span> : null}
+                    {/* A legacy external cover can never publish: mark it so the
+                        admin knows to remove it in the editor first [S2]. */}
+                    {draft.legacyCover ? <span className="meta">Portada externa: hay que quitarla antes de poder publicar.</span> : null}
                   </div>
                   <div>
                     {/* Publish works from a plain form: the route guards the

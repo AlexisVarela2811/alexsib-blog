@@ -18,11 +18,18 @@ import { put as blobPut } from '@vercel/blob';
 import type { ArticleEditorValues } from '../../components/editor/article-editor';
 
 export type EditorValues = { title: string; slug: string; excerpt: string; tags: string; markdown: string };
-export type EditorOutcome = { unauthorized: true } | { unauthorized: false; values: EditorValues | null };
+// A draft with values always carries its stored cover (a blog-managed path, a
+// legacy external URL or null) so the editor can show it and offer removal.
+export type EditorOutcome =
+  | { unauthorized: true }
+  | { unauthorized: false; values: null }
+  | { unauthorized: false; values: EditorValues; cover: string | null };
 export type PreviewDraft = { title: string; excerpt: string; tags: string[]; content: string };
 export type PreviewOutcome = { unauthorized: true } | { unauthorized: false; draft: PreviewDraft | null };
-/** Minimal row shape for the panel; nothing else about the storage reaches the browser. */
-export type PanelArticle = { id: string; title: string; tags: string[] };
+/** Minimal row shape for the panel; nothing else about the storage reaches the browser.
+ * `legacyCover` marks a draft whose cover is an external URL, which publishing
+ * always rejects until it is removed [S2: "No, solo imágenes del blog"]. */
+export type PanelArticle = { id: string; title: string; tags: string[]; legacyCover?: boolean };
 export type PanelOutcome = { unauthorized: true } | { unauthorized: false; drafts: PanelArticle[] | null; published: PanelArticle[] | null };
 
 function authConfig() {
@@ -64,8 +71,11 @@ export async function loadEditorDraft(cookie: unknown, id: unknown): Promise<Edi
     try {
       try { if (await session.auth.authorizeRead(cookie) !== true) return { unauthorized: true }; }
       catch { return { unauthorized: true }; }
-      // The controller read is the already-authorized editor mapping.
-      return { unauthorized: false, values: await session.controller.load(id) };
+      // The controller read is the already-authorized editor mapping; the cover
+      // comes from the same authorized read path and reaches only this page.
+      const values = await session.controller.load(id);
+      const article = await session.service.read(id);
+      return { unauthorized: false, values, cover: article ? article.coverImage ?? null : null };
     } catch {
       // Authorized readers get a generic no-draft answer; storage state is not revealed.
       return { unauthorized: false, values: null };
@@ -146,8 +156,10 @@ export async function loadPanelArticles(cookie: unknown): Promise<PanelOutcome> 
       try { if (await session.auth.authorizeRead(cookie) !== true) return { unauthorized: true }; }
       catch { return { unauthorized: true }; }
       const articles = await session.service.list();
-      const map = (article: { id: string; title: string; tags: string[] | null; status: string }): PanelArticle =>
-        ({ id: article.id, title: article.title, tags: article.tags ?? [] });
+      const map = (article: { id: string; title: string; tags: string[] | null; status: string; coverImage: string | null }): PanelArticle => ({
+        id: article.id, title: article.title, tags: article.tags ?? [],
+        ...(article.coverImage !== null && !article.coverImage.startsWith('/media/') ? { legacyCover: true } : {}),
+      });
       return {
         unauthorized: false,
         drafts: articles.filter(article => article.status === 'draft').map(map),
@@ -159,15 +171,23 @@ export async function loadPanelArticles(cookie: unknown): Promise<PanelOutcome> 
   } catch { return { unauthorized: true }; }
 }
 
-/** Save one draft edit with the controller's cover-image comparison; generic outcome only. */
+/** Save one draft edit with the controller's cover-image comparison; generic
+ * outcome only. The payload may carry an explicit cover instruction: `null`
+ * clears the stored cover and a blog-managed /media/<uuid> path replaces it;
+ * without the key the stored cover is preserved exactly, including a legacy
+ * external one. Any other value, or one the controller rejects (an external
+ * URL, a malformed path), fails with the generic outcome and changes nothing. */
 export async function savePrivateDraft(cookie: unknown, origin: unknown, id: unknown, values: unknown): Promise<boolean> {
   if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin || !validId(id)) return false;
   if (!values || typeof values !== 'object' || Array.isArray(values)) return false;
+  const cover = (values as { cover?: unknown }).cover;
+  if (cover !== undefined && cover !== null && typeof cover !== 'string') return false;
   try {
     const session = openSession(cookie, origin);
     try {
-      // The controller reads the draft and passes the exact cover comparison.
-      await session.controller.edit(id, values as ArticleEditorValues);
+      // The controller reads the draft and passes the exact cover comparison;
+      // it enforces the managed-path shape itself.
+      await session.controller.edit(id, values as ArticleEditorValues, cover as string | null | undefined);
       return true;
     } finally { session.client.close(); }
   } catch { return false; }

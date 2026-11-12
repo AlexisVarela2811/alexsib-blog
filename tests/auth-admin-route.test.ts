@@ -273,3 +273,50 @@ test('the image upload route fails closed over HTTP without authorization or pro
     assert.equal(noProvider.headers.get('location'), null);
   });
 });
+
+test('a legacy external cover blocks publishing until the admin clears it over HTTP', { skip }, async () => {
+  await withServer(async (base, databaseUrl) => {
+    const legacy = 'https://example.com/portada.png';
+    const db = createClient({ url: databaseUrl });
+    try {
+      const now = new Date().toISOString();
+      await db.execute({
+        sql: `INSERT INTO posts (id, slug, title, excerpt, content, tags, cover_image, status, created_at, updated_at, published_at)
+              VALUES ('legacy-draft', 'legacy-draft', 'Borrador con portada externa', 'Resumen.', '# Cuerpo', '["Pruebas"]', ?, 'draft', ?, ?, NULL)`,
+        args: [legacy, now, now],
+      });
+    } finally { db.close(); }
+    const readCover = async () => {
+      const client = createClient({ url: databaseUrl });
+      try { return (await client.execute({ sql: 'SELECT cover_image, status FROM posts WHERE id = ?', args: ['legacy-draft'] })).rows[0]; }
+      finally { client.close(); }
+    };
+    const save = (cookie: string, payload: Record<string, unknown>) => fetch(`${base}/api/admin/drafts/legacy-draft`, {
+      method: 'POST', redirect: 'manual',
+      headers: { 'content-type': 'application/json', cookie, origin },
+      body: JSON.stringify(payload),
+    });
+    const values = { title: 'Borrador con portada externa', slug: 'legacy-draft', excerpt: 'Resumen.', tags: 'Pruebas', markdown: '# Cuerpo' };
+    const cookie = await sessionCookie(base);
+    const publish = () => fetch(`${base}/api/admin/drafts/legacy-draft/publish`, { method: 'POST', redirect: 'manual', headers: { cookie, origin } });
+
+    assert.equal((await publish()).status, 400, 'an external cover must still block publishing');
+
+    const kept = await save(cookie, values);
+    assert.equal(kept.status, 200);
+    assert.equal((await readCover()).cover_image, legacy, 'omitting the cover must preserve it verbatim');
+
+    const replaced = await save(cookie, { ...values, cover: 'https://evil.example/x.png' });
+    assert.equal(replaced.status, 400, 'a new external cover must be rejected');
+    const malformed = await save(cookie, { ...values, cover: '/media/not-a-uuid' });
+    assert.equal(malformed.status, 400);
+    assert.equal((await readCover()).cover_image, legacy, 'rejected covers leave the stored row untouched');
+
+    const cleared = await save(cookie, { ...values, cover: null });
+    assert.equal(cleared.status, 200);
+    assert.equal((await readCover()).cover_image, null, 'the explicit clear must remove the legacy cover');
+
+    assert.equal((await publish()).status, 303, 'after clearing, the draft publishes');
+    assert.equal((await readCover()).status, 'published');
+  });
+});

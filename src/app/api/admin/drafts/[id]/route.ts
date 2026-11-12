@@ -20,8 +20,11 @@ const rejection = () => new Response('No se pudieron guardar los cambios', { sta
 const maxBodyBytes = 1_500_000;
 // Only the editor's own fields may be sent. Unknown keys are rejected with the
 // same generic rejection, mirroring the draft validation strictness instead of
-// silently dropping them.
-const payloadKeys = new Set(['title', 'slug', 'excerpt', 'tags', 'markdown']);
+// silently dropping them. `cover` is an explicit instruction: null clears the
+// stored cover and a managed /media/<uuid> path replaces it; when the key is
+// absent the current cover is preserved exactly, including a legacy external
+// one. The session and the controller enforce the accepted shapes.
+const payloadKeys = new Set(['title', 'slug', 'excerpt', 'tags', 'markdown', 'cover']);
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   try {

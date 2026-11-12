@@ -32,6 +32,7 @@ export default async function EditorPage({ params }: { params: Promise<{ id: str
       <p className="hint">Guardá antes de ir a la vista previa: solo se muestra la última versión guardada.</p>
       <EditorForm
         initial={outcome.values}
+        cover={outcome.cover}
         saveUrl={`/api/admin/drafts/${encodeURIComponent(id)}`}
         uploadUrl={`/api/admin/drafts/${encodeURIComponent(id)}/upload`}
       />
