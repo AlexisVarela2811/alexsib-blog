@@ -12,6 +12,9 @@ import { createAuthComposition } from '../../lib/auth/composition.ts';
 import { createEditorialPersistence, createEditorialService } from '../../lib/editorial/service.ts';
 // @ts-expect-error Node's native TypeScript runner requires the extension.
 import { createEditorController } from '../../lib/editorial/editor-controller.ts';
+// @ts-expect-error Node's native TypeScript runner requires the extension.
+import { createDatabasePrivateComposition } from '../../lib/editorial/private-composition.ts';
+import { put as blobPut } from '@vercel/blob';
 import type { ArticleEditorValues } from '../../components/editor/article-editor';
 
 export type EditorValues = { title: string; slug: string; excerpt: string; tags: string; markdown: string };
@@ -168,4 +171,51 @@ export async function savePrivateDraft(cookie: unknown, origin: unknown, id: unk
       return true;
     } finally { session.client.close(); }
   } catch { return false; }
+}
+
+/** The exact private-storage shape the upload composition expects; the real
+ * provider is @vercel/blob's put with a private access mode. */
+type BlobPut = (
+  pathname: string,
+  body: Buffer,
+  options: { access: 'private'; contentType: string; token: string; allowOverwrite: false },
+) => Promise<unknown>;
+
+/** Upload one image for one draft through the authorized private composition:
+ * durable intent reservation, private Blob storage and atomic media
+ * registration owned by that draft. The image signature and the byte limit
+ * are validated again by the composition before anything reaches storage. A
+ * failed or ambiguous provider outcome leaves the durable intent row for
+ * reconciliation, deletes nothing it cannot prove it created, and stays
+ * server-side: this function answers only the new media id — the /media/<id>
+ * path source — or null, never an internal detail, storage path or bucket. */
+export async function uploadDraftImage(
+  cookie: unknown,
+  origin: unknown,
+  id: unknown,
+  mime: unknown,
+  stream: AsyncIterable<Uint8Array> | null,
+  put: BlobPut = blobPut,
+): Promise<string | null> {
+  if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin || !validId(id)) return null;
+  if (!stream) return null;
+  try {
+    const { db, client } = createDatabase();
+    try {
+      const auth = createAuthComposition(authConfig(), client);
+      const composition = createDatabasePrivateComposition({
+        db,
+        auth: {
+          authorize: (c, o) => auth.authorize(c, o),
+          authorizeRead: c => auth.authorizeRead(c),
+        },
+        cookie,
+        origin,
+        put,
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
+      const uploaded = await composition.upload({ postId: id, mime, stream });
+      return uploaded.id;
+    } finally { client.close(); }
+  } catch { return null; }
 }

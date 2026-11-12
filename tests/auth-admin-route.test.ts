@@ -247,3 +247,29 @@ test('publish and unpublish stay guarded and move the article state over HTTP', 
     assert.equal(gone.status, 404, 'unpublishing must take the article private again');
   });
 });
+
+test('the image upload route fails closed over HTTP without authorization or provider configuration', { skip }, async () => {
+  await withServer(async base => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+    const upload = (headers: Record<string, string>) => fetch(`${base}/api/admin/drafts/fixture-draft/upload`, {
+      method: 'POST', redirect: 'manual', headers: { 'content-type': 'image/png', ...headers }, body: png,
+    });
+    const cookie = await sessionCookie(base);
+    for (const headers of [{}, { cookie }, { origin }, { cookie: '__Host-admin=forged', origin }] as Record<string, string>[]) {
+      const rejected = await upload(headers);
+      assert.equal(rejected.status, 400);
+      assert.equal(rejected.headers.get('cache-control'), 'no-store');
+      assert.equal(await rejected.text(), 'No se pudo subir la imagen');
+    }
+    const wrongType = await fetch(`${base}/api/admin/drafts/fixture-draft/upload`, {
+      method: 'POST', redirect: 'manual', headers: { 'content-type': 'text/plain', cookie, origin }, body: png,
+    });
+    assert.equal(wrongType.status, 400);
+    assert.equal(await wrongType.text(), 'No se pudo subir la imagen');
+
+    const noProvider = await upload({ cookie, origin });
+    assert.equal(noProvider.status, 400, 'a missing Blob token must fail closed');
+    assert.equal(await noProvider.text(), 'No se pudo subir la imagen');
+    assert.equal(noProvider.headers.get('location'), null);
+  });
+});

@@ -33,6 +33,7 @@ export default async function EditorPage({ params }: { params: Promise<{ id: str
       <EditorForm
         initial={outcome.values}
         saveUrl={`/api/admin/drafts/${encodeURIComponent(id)}`}
+        uploadUrl={`/api/admin/drafts/${encodeURIComponent(id)}/upload`}
       />
     </main>
   );
