@@ -20,14 +20,8 @@ export interface ArticleEditorProps {
   onChange: (values: ArticleEditorValues) => void;
 }
 
-/** Trim entries, discard empty entries, and preserve order and duplicates. */
-export function parseTags(text: string): string[] {
-  return text.split(',').map((tag) => tag.trim()).filter(Boolean);
-}
-
-export function formatTags(tags: string[]): string {
-  return tags.map((tag) => tag.trim()).filter(Boolean).join(', ');
-}
+// @ts-expect-error Node's native TypeScript runner requires the extension.
+export { parseTags, formatTags } from './article-tags.ts';
 
 /** Presentation only: conversion and persistence remain the parent's responsibility. */
 export function ArticleEditor({ values, onChange }: ArticleEditorProps) {
