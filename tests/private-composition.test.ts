@@ -27,7 +27,7 @@ function setup(cookie: unknown, origin: unknown, verifySession = async () => tru
     publish: async () => { calls.push('publish'); return article; }, unpublish: async () => { calls.push('unpublish'); return article; },
   };
   const service = createPrivateComposition({ auth, cookie, origin, persistence,
-    put: async () => { calls.push('put'); }, register: async () => { calls.push('register'); }, token: 'test-token' });
+    put: async (path: string) => { calls.push('put'); return { pathname: path }; }, register: async () => { calls.push('register'); }, token: 'test-token' });
   return { service, calls };
 }
 
@@ -65,7 +65,8 @@ test('database composition protects uploads and follows publication media lifecy
     await client.executeMultiple(readFileSync('drizzle/0004_upload_reservations.sql', 'utf8')); 
     const db = drizzle(client);
     const stored = new Map<string, Buffer>();
-    const put = async (path: string, body: Buffer) => { stored.set(path, body); };
+    // The provider contract resolves with a result; a bare resolution proves nothing.
+    const put = async (path: string, body: Buffer) => { stored.set(path, body); return { pathname: path }; };
     const auth = createAuthBoundary({ origin: 'https://example.test', consumeAttempt: async () => true, verifyCredentials: async () => true, createSession: async () => 'token', verifySession: async () => true });
     const deps = { db, auth, cookie: '__Host-admin=token', origin: 'https://example.test', put, token: 'test-token' };
     const service = createDatabasePrivateComposition(deps);
@@ -159,7 +160,7 @@ test('real login connects signed sessions to isolated editorial reads and mutati
     assert.ok(cookie);
     assert.match(cookie, /^__Host-admin=[A-Za-z0-9._-]+; Path=\/; Max-Age=28800; Secure; HttpOnly; SameSite=Strict$/);
     let puts = 0;
-    const deps = { db: drizzle(client), auth, cookie, origin, token: undefined, put: async () => { puts++; } };
+    const deps = { db: drizzle(client), auth, cookie, origin, token: undefined, put: async (path: string) => { puts++; return { pathname: path }; } };
     const service = createDatabasePrivateComposition(deps);
     const input = { slug: 'auth-seam', title: 'Title', excerpt: 'Excerpt', content: 'Text', tags: [], coverImage: null };
     const draft = await service.editorial.create(input);

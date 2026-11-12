@@ -312,3 +312,29 @@ test('S2: a content-type spoof (declared png, garbage signature) never reaches s
   assert.equal(putCalls.length, 0);
   assert.equal(deletions.length, 0);
 });
+
+test('S2: a provider answer that proves no object was stored never registers media', async () => {
+  resetProvider();
+  const nullingPut = async (pathname: string, body: Buffer, options: Parameters<typeof fakePut>[2]) => {
+    putCalls.push({ pathname, body, options });
+    return null;
+  };
+  const countRows = async (sql: string) => Number((await client.execute({ sql, args: [] })).rows[0].n);
+  const mediaBefore = await countRows("SELECT COUNT(*) AS n FROM media WHERE post_id = 'up-target'");
+  const registeredBefore = await countRows("SELECT COUNT(*) AS n FROM upload_intents WHERE post_id = 'up-target' AND state = 'registered'");
+  assert.equal(await uploadDraftImage(cookie, origin, 'up-target', 'image/png', streamOf(png), nullingPut), null);
+  assert.equal(putCalls.length, 1, 'the provider must still be called once');
+  assert.equal(await countRows("SELECT COUNT(*) AS n FROM media WHERE post_id = 'up-target'"), mediaBefore, 'nothing may be registered for an unproven object');
+  assert.equal(await countRows("SELECT COUNT(*) AS n FROM upload_intents WHERE post_id = 'up-target' AND state = 'registered'"), registeredBefore);
+});
+
+test('S2: exactly the upload limit is accepted and one byte over never reaches the provider', async () => {
+  resetProvider();
+  const limit = 5 * 1024 * 1024;
+  const sized = (size: number) => (async function* () { yield png; yield new Uint8Array(size - png.byteLength); })();
+  assert.equal(await uploadDraftImage(cookie, origin, 'up-target', 'image/png', sized(limit + 1), fakePut), null);
+  assert.equal(putCalls.length, 0, 'an oversized body must not reach the provider');
+  const id = await uploadDraftImage(cookie, origin, 'up-target', 'image/png', sized(limit), fakePut);
+  assert.ok(typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id));
+  assert.equal(putCalls[0].body.byteLength, limit);
+});
