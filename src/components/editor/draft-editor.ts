@@ -13,7 +13,7 @@ export interface DraftEditorProps {
 export function DraftEditor({ markdown, onChange }: DraftEditorProps) {
   const id = useId();
   return h('section', { 'aria-label': 'Editor de borrador', className: 'text-[#edf4ef]' },
-    h('p', { className: 'font-mono text-sm text-[#a1efb5]' }, 'Borrador sin guardar · Nada se guarda ni se publica desde este editor.'),
+    h('p', { className: 'font-mono text-sm text-[#a1efb5]' }, 'Borrador sin guardar · Tus cambios se guardan cuando presionás "Guardar cambios".'),
     h('div', { className: 'grid gap-8 md:grid-cols-2' },
       h('div', { className: 'min-w-0' },
         h('label', { htmlFor: id, className: 'mb-2 block font-mono text-sm' }, 'Contenido · Markdown'),

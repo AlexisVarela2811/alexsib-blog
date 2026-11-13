@@ -37,7 +37,7 @@ const uploadMessages = {
 } as const;
 
 const buttonClasses = 'cursor-pointer justify-self-start rounded border border-[#a1efb5] bg-[#a1efb5] px-4 py-3 font-mono text-xs text-[#0b100d] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#a1efb5] disabled:cursor-default disabled:opacity-55';
-const noteClasses = 'font-mono text-xs text-[#a6b9ac]';
+const noteClasses = 'break-words font-mono text-xs text-[#a6b9ac]';
 
 export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormProps) {
   const router = useRouter();
@@ -111,7 +111,8 @@ export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormPro
         h('p', { role: 'status', className: noteClasses }, messages[status]),
         h('p', { className: noteClasses }, 'La vista previa muestra la última versión guardada.'),
       ),
-      h('div', { className: 'grid gap-3', 'aria-label': 'Imagenes del borrador' },
+      h('div', { role: 'group', 'aria-label': 'Imágenes del borrador', className: 'side-block' },
+        h('h2', null, '// imágenes'),
         !uploadUrl ? h('p', { className: noteClasses }, 'Guardá el borrador para poder subir imágenes.') : null,
         h('input', {
           type: 'file',
@@ -127,7 +128,8 @@ export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormPro
         h('p', { role: 'status', className: noteClasses }, uploadMessages[uploadStatus]),
         uploadedPath ? h('p', { className: noteClasses }, `Ruta de la imagen: ${uploadedPath}`) : null,
       ),
-      cover !== undefined && cover !== null ? h('div', { className: 'grid gap-3', 'aria-label': 'Portada del borrador' },
+      cover !== undefined && cover !== null ? h('div', { role: 'group', 'aria-label': 'Portada del borrador', className: 'side-block' },
+        h('h2', null, '// portada'),
         cover.startsWith('/media/')
           ? h('img', { src: cover, alt: 'Portada actual del borrador', className: 'max-w-xs rounded border border-[#304537] bg-[#111a15]' })
           : h('p', { className: noteClasses }, 'Portada externa: hay que quitarla antes de poder publicar.'),

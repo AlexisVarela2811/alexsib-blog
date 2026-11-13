@@ -15,14 +15,14 @@ export default async function AdminPage() {
   if (panel.unauthorized) redirect('/login');
 
   return (
-    <main id="contenido">
+    <main id="contenido" className="private-main">
       <p className="eyebrow">~/panel/artículos</p>
       <div className="topline">
         <div>
           <h1>Tu cuaderno.</h1>
           <p>Ideas que estás trabajando y otras que ya compartiste.</p>
         </div>
-        <div className="grid gap-3 justify-items-end">
+        <div className="topline-actions">
           <Link
             className="rounded border border-[#a1efb5] bg-[#a1efb5] px-4 py-3 font-mono text-xs text-[#0b100d] hover:brightness-110"
             href="/admin/nuevo"
@@ -37,7 +37,14 @@ export default async function AdminPage() {
       {panel.drafts === null || panel.published === null ? <p>No se pudieron cargar los artículos. Probá de nuevo en unos minutos.</p> : (
         <>
           <section aria-label="Borradores">
-            {panel.drafts.length === 0 ? <p>Todavía no hay borradores.</p>
+            <h2 className="list-heading">~/borradores</h2>
+            {panel.drafts.length === 0 ? (
+              <div className="empty-state">
+                <h2>Tu primera idea empieza acá.</h2>
+                <p>No necesitás tener todo resuelto para empezar un borrador.</p>
+                <Link className="button" href="/admin/nuevo">Escribir mi primer artículo →</Link>
+              </div>
+            )
               : panel.drafts.map(draft => (
                 <div className="row" key={draft.id}>
                   <div>
@@ -47,7 +54,7 @@ export default async function AdminPage() {
                         admin knows to remove it in the editor first [S2]. */}
                     {draft.legacyCover ? <span className="meta">Portada externa: hay que quitarla antes de poder publicar.</span> : null}
                   </div>
-                  <div>
+                  <div className="row-actions">
                     {/* Publish works from a plain form: the route guards the
                         session and the exact origin and answers 303 back here. */}
                     <form action={`/api/admin/drafts/${encodeURIComponent(draft.id)}/publish`} method="post">
@@ -61,14 +68,20 @@ export default async function AdminPage() {
               ))}
           </section>
           <section aria-label="Publicados">
-            {panel.published.length === 0 ? <p>Nada publicado todavía.</p>
+            <h2 className="list-heading">~/publicados</h2>
+            {panel.published.length === 0 ? (
+              <div className="empty-state">
+                <h2>Nada publicado todavía.</h2>
+                <p>Cuando un borrador esté listo, lo publicás desde esta lista.</p>
+              </div>
+            )
               : panel.published.map(article => (
                 <div className="row" key={article.id}>
                   <div>
                     <h2>{article.title}</h2>
                     {article.tags.length > 0 ? <span className="meta">{article.tags.join(' · ')}</span> : null}
                   </div>
-                  <div>
+                  <div className="row-actions">
                     <form action={`/api/admin/drafts/${encodeURIComponent(article.id)}/unpublish`} method="post">
                       <button type="submit">Despublicar</button>
                     </form>

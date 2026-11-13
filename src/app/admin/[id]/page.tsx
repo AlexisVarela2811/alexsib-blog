@@ -17,7 +17,7 @@ export default async function EditorPage({ params }: { params: Promise<{ id: str
   if (!outcome.values) notFound();
   const target = `/admin/${encodeURIComponent(id)}`;
   return (
-    <main id="contenido">
+    <main id="contenido" className="private-main">
       <p className="eyebrow">~/panel/editor · BORRADOR</p>
       <div className="topline">
         <div>
@@ -25,7 +25,7 @@ export default async function EditorPage({ params }: { params: Promise<{ id: str
           <p>Título, resumen, etiquetas y texto. Nada se publica desde acá.</p>
         </div>
         <nav aria-label="Editar o previsualizar el borrador">
-          <Link className="rounded border border-[#304537] bg-[#111a15] px-4 py-3 font-mono text-xs hover:border-[#a1efb5]" href={`${target}/vista`}>Vista previa ↗</Link>{' '}
+          <Link href={`${target}/vista`}>Vista previa ↗</Link>
           <Link href="/admin">← Volver al panel</Link>
         </nav>
       </div>

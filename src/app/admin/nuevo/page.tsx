@@ -15,7 +15,7 @@ export default async function NewArticlePage() {
   // Fail closed: without a verifiable session the page answers exactly like the panel.
   if (!await hasPrivateSession(cookie)) redirect('/login');
   return (
-    <main id="contenido">
+    <main id="contenido" className="private-main">
       <p className="eyebrow">~/panel/editor · NUEVO</p>
       <div className="topline">
         <div>
