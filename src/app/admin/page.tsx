@@ -22,9 +22,17 @@ export default async function AdminPage() {
           <h1>Tu cuaderno.</h1>
           <p>Ideas que estás trabajando y otras que ya compartiste.</p>
         </div>
-        <form action="/api/auth/logout" method="post">
-          <button type="submit">Salir</button>
-        </form>
+        <div className="grid gap-3 justify-items-end">
+          <Link
+            className="rounded border border-[#a1efb5] bg-[#a1efb5] px-4 py-3 font-mono text-xs text-[#0b100d] hover:brightness-110"
+            href="/admin/nuevo"
+          >
+            Nuevo artículo
+          </Link>
+          <form action="/api/auth/logout" method="post">
+            <button type="submit">Salir</button>
+          </form>
+        </div>
       </div>
       {panel.drafts === null || panel.published === null ? <p>No se pudieron cargar los artículos. Probá de nuevo en unos minutos.</p> : (
         <>

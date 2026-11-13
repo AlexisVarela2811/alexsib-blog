@@ -115,6 +115,34 @@ export async function authorizeMutation(cookie: unknown, origin: unknown): Promi
   } catch { return false; }
 }
 
+/** Verify the session for a page that has no draft to read yet, such as the
+ * create-article page. Fail closed: anything but a verified session is false. */
+export async function hasPrivateSession(cookie: unknown): Promise<boolean> {
+  if (typeof cookie !== 'string' || !cookie) return false;
+  try {
+    const { client } = createDatabase();
+    try {
+      const auth = createAuthComposition(authConfig(), client);
+      return await auth.authorizeRead(cookie) === true;
+    } finally { client.close(); }
+  } catch { return false; }
+}
+
+/** Create one new draft from the editor's values through the authorized service.
+ * The panel offers no cover on creation, so the row starts without one. Generic
+ * outcome only: the new draft id, or null when anything fails. */
+export async function createPrivateDraft(cookie: unknown, origin: unknown, values: unknown): Promise<string | null> {
+  if (typeof cookie !== 'string' || !cookie || typeof origin !== 'string' || !origin) return null;
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return null;
+  try {
+    const session = openSession(cookie, origin);
+    try {
+      const created = await session.controller.create(values as ArticleEditorValues);
+      return created && typeof created.id === 'string' && created.id ? created.id : null;
+    } finally { session.client.close(); }
+  } catch { return null; }
+}
+
 /** Publish one draft through the authorized service. The persistence layer
  * writes the published-media membership inside the same transaction, so a
  * draft referencing an image it does not own fails atomically and stays a

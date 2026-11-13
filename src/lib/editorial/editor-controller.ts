@@ -28,9 +28,10 @@ export function createEditorController(service: Service) {
       return { title: article.title, slug: article.slug, excerpt: article.excerpt,
         tags: formatTags(article.tags), markdown: article.content };
     }),
-    create: (values: ArticleEditorValues) => run(async () => {
-      await service.create(input(values, null));
-    }),
+    // A new draft never carries a cover: covers are set on an existing draft,
+    // where a legacy external one can also be removed. The created row is
+    // returned so the caller can route to its editor.
+    create: (values: ArticleEditorValues) => run(async () => await service.create(input(values, null))),
     // `cover` is an explicit instruction from the editor: undefined preserves
     // the stored cover exactly as before (including a legacy external one),
     // null clears it and a managed path replaces it. Any other value is

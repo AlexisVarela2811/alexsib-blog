@@ -1,6 +1,7 @@
 'use client';
 
 import { createElement as h, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ArticleEditorValues } from '../../../components/editor/article-editor';
 // @ts-expect-error Node's native TypeScript runner requires the extension.
 import { ArticleEditor } from '../../../components/editor/article-editor.ts';
@@ -16,7 +17,9 @@ export interface EditorFormProps {
   initial: ArticleEditorValues;
   cover?: string | null;
   saveUrl: string;
-  uploadUrl: string;
+  /** Optional: a draft that does not exist yet has nothing to upload into, so the
+   * create page omits the upload block entirely. */
+  uploadUrl?: string;
 }
 
 const messages = {
@@ -37,6 +40,7 @@ const buttonClasses = 'cursor-pointer justify-self-start rounded border border-[
 const noteClasses = 'font-mono text-xs text-[#a6b9ac]';
 
 export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormProps) {
+  const router = useRouter();
   const [values, setValues] = useState(initial);
   const [status, setStatus] = useState<keyof typeof messages>('idle');
   const [uploadStatus, setUploadStatus] = useState<keyof typeof uploadMessages>('idle');
@@ -57,11 +61,18 @@ export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormPro
       const response = await fetch(saveUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
+      // The create route answers the new draft id; the edit route answers no id.
+      // Only a same-origin panel path built from that id is ever navigated to.
+      const data = response.ok ? await response.json().catch(() => null) : null;
+      const createdId = data && typeof data === 'object' && typeof (data as { id?: unknown }).id === 'string'
+        ? (data as { id: string }).id
+        : null;
+      if (createdId) { router.push(`/admin/${encodeURIComponent(createdId)}`); return; }
       setStatus(response.ok ? 'saved' : 'failed');
     } catch { setStatus('failed'); }
   };
   const upload = async () => {
-    if (!file || uploading) return;
+    if (!file || uploading || !uploadUrl) return;
     setUploadStatus('uploading');
     try {
       // The guarded upload route requires the session cookie and the exact
@@ -101,6 +112,7 @@ export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormPro
         h('p', { className: noteClasses }, 'La vista previa muestra la última versión guardada.'),
       ),
       h('div', { className: 'grid gap-3', 'aria-label': 'Imagenes del borrador' },
+        !uploadUrl ? h('p', { className: noteClasses }, 'Guardá el borrador para poder subir imágenes.') : null,
         h('input', {
           type: 'file',
           accept: 'image/jpeg,image/png,image/webp',
@@ -109,7 +121,7 @@ export function EditorForm({ initial, cover, saveUrl, uploadUrl }: EditorFormPro
           onChange: event => { setFile(event.target.files?.[0] ?? null); setUploadStatus('idle'); },
         }),
         h('button', {
-          type: 'button', onClick: () => void upload(), disabled: uploading,
+          type: 'button', onClick: () => void upload(), disabled: uploading || !uploadUrl,
           className: buttonClasses,
         }, 'Subir imagen'),
         h('p', { role: 'status', className: noteClasses }, uploadMessages[uploadStatus]),
